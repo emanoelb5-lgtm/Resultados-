@@ -67,4 +67,11 @@ class DataParserTest {
         assertEquals("garrafao", searchKey("GARRAFÃO"))
         assertEquals("04120", pad("4120", 5))
     }
+    @Test fun municipalOfficeRequiresMunicipalityAndZoneRequiresMunicipality() {
+        val e = election.copy(coverage = listOf(Coverage("pa", setOf("05878"), listOf(Office("11", "Prefeito", "1")))))
+        assertFalse(e.supports(Place("pa"), "11"))
+        assertFalse(e.supports(Place("pa", "04120"), "11"))
+        assertTrue(e.supports(Place("pa", "05878"), "11"))
+        assertFalse(election.supports(Place("pa", zone = "0081"), "1"))
+    }
 }

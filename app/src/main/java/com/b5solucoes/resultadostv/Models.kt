@@ -34,7 +34,9 @@ data class Election(val id: String, val cycle: String, val name: String, val dat
             (it.code != "8" || uf == "df") && (it.code != "7" || uf != "df") &&
                 (uf != "br" || it.code == "1") && (uf != "zz" || it.code == "1")
         }
-    fun supports(place: Place, office: String): Boolean = coverage.any {
+    fun supports(place: Place, office: String): Boolean =
+        !(office in setOf("11", "13", "25") && place.municipality.isBlank()) &&
+        !(place.zone.isNotBlank() && place.municipality.isBlank()) && coverage.any {
         (it.uf == "br" || it.uf == place.uf) && it.offices.any { o -> o.code == office } &&
             (it.municipalities.isEmpty() || place.municipality in it.municipalities)
     } && offices(place.uf).any { it.code == office }

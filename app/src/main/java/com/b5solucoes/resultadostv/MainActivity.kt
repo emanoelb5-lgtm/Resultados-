@@ -40,6 +40,9 @@ class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("preferences", MODE_PRIVATE) }
     private var elections = emptyList<Election>()
     private var states = emptyList<State>()
+    private var statesKey = "ele2026/6258"
+    private var loadingStatesKey = ""
+    private var pendingLocationKey = ""
     private var selection: Selection? = null
     private var response: JsonResponse? = null
     private var result: ResultData? = null
@@ -132,6 +135,7 @@ class MainActivity : Activity() {
         main.addView(heading, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
         content = column()
         contentScroll = ScrollView(this).apply {
+            tag = "results-scroll"
             isFillViewport = false; isVerticalScrollBarEnabled = false
             addView(content); clipToPadding = false
         }
@@ -207,7 +211,7 @@ class MainActivity : Activity() {
             for (notice in data.notices) content.addView(text(notice, 14f, Palette.warning).apply { setPadding(0, 0, 0, dp(10)) })
             val toolbar = row()
             toolbar.addView(text("CANDIDATURAS", 11f, Palette.muted, true), LinearLayout.LayoutParams(0, -2, 1f))
-            toolbar.addView(action(if (candidateQuery.isBlank()) "Buscar candidato" else "Busca: $candidateQuery", "search") { chooseSearch() })
+            toolbar.addView(action(if (candidateQuery.isBlank()) "Buscar candidato" else "Busca: $candidateQuery", "search") { chooseSearch() }.apply { minHeight = dp(38) })
             content.addView(toolbar, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
             val filtered = data.candidates.filter {
                 candidateQuery.isBlank() || searchKey("${it.name} ${it.party} ${it.number}").contains(searchKey(candidateQuery))
@@ -220,7 +224,7 @@ class MainActivity : Activity() {
                 val line = row().apply { gravity = Gravity.TOP }
                 pair.forEachIndexed { index, c ->
                     if (index > 0) line.addView(View(this), LinearLayout.LayoutParams(dp(12), 1))
-                    line.addView(candidateCard(s, c, data.releaseVotes), LinearLayout.LayoutParams(0, dp(196), 1f))
+                    line.addView(candidateCard(s, c, data.releaseVotes), LinearLayout.LayoutParams(0, dp(190), 1f))
                 }
                 if (pair.size == 1) line.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f).apply { leftMargin = dp(12) })
                 content.addView(line, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
@@ -368,7 +372,8 @@ class MainActivity : Activity() {
                 else Place(uf, name = state?.name ?: uf.uppercase(Locale.ROOT))
             }
             val office = e.offices(place.uf).firstOrNull() ?: return@pick
-            changeSelection(Selection(e, office, place)); loadStates(e)
+            changeSelection(Selection(e, office, place))
+            loadStates(e, office.code in setOf("11", "13", "25") && place.municipality.isBlank())
         }
     }
     private fun chooseOffice() {
@@ -379,6 +384,11 @@ class MainActivity : Activity() {
     }
     private fun chooseState() {
         val s = selection ?: return
+        if (statesKey != "${s.election.cycle}/${s.election.id}") {
+            Toast.makeText(this, "Carregando os locais desta eleição…", Toast.LENGTH_SHORT).show()
+            loadStates(s.election, true)
+            return
+        }
         val available = states.filter { state -> s.election.offices(state.code).isNotEmpty() }
         val country = if (s.election.offices("br").isNotEmpty()) listOf(State("br", "Brasil • resultado nacional", emptyList())) else emptyList()
         val options = country + available
@@ -412,13 +422,34 @@ class MainActivity : Activity() {
             changeSelection(s.copy(place = s.place.copy(zone = if (it == 0) "" else zones[it - 1])))
         }
     }
-    private fun loadStates(e: Election) {
+    private fun loadStates(e: Election, openAfter: Boolean = false) {
+        val key = "${e.cycle}/${e.id}"
+        if (openAfter) pendingLocationKey = key
+        if (statesKey == key) {
+            if (pendingLocationKey == key) { pendingLocationKey = ""; chooseState() }
+            return
+        }
+        if (loadingStatesKey == key) return
+        loadingStatesKey = key
         worker.execute {
-            runCatching { DataParser.states(repository.get(Endpoints.municipalities(e), 86_400_000) {
+            val outcome = runCatching { DataParser.states(repository.get(Endpoints.municipalities(e), 86_400_000) {
                 require(it.optString("f") == "o"); require(DataParser.states(it).isNotEmpty())
-            }.json) }.onSuccess { fresh -> handler.post {
-                if (!isDestroyed && selection?.election?.id == e.id) states = fresh
-            } }
+            }.json) }
+            handler.post {
+                if (isDestroyed) return@post
+                if (loadingStatesKey == key) loadingStatesKey = ""
+                outcome.onSuccess { fresh ->
+                    if (selection?.election?.id == e.id && selection?.election?.cycle == e.cycle) {
+                        states = fresh; statesKey = key
+                        if (pendingLocationKey == key) { pendingLocationKey = ""; chooseState() }
+                    }
+                }.onFailure {
+                    if (pendingLocationKey == key) {
+                        pendingLocationKey = ""
+                        message("Locais indisponíveis", "Não foi possível carregar a lista desta eleição. Verifique a conexão e tente novamente.")
+                    }
+                }
+            }
         }
     }
 

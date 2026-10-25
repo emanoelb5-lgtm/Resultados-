@@ -88,6 +88,7 @@ class TvNavigationTest {
             assertTrue(device.wait(Until.hasObject(By.text("Consultas favoritas")), 3000))
             device.pressBack(); device.waitForIdle()
             focus(scenario, "election")
+            scenario.onActivity { it.findViewById<View>(android.R.id.content).findViewWithTag<android.widget.ScrollView>("results-scroll").scrollTo(0, 0) }
             screenshot("01-painel-tv-dados-ficticios.png")
         }
     }
@@ -118,6 +119,30 @@ class TvNavigationTest {
             SystemClock.sleep(500)
             instrumentation.waitForIdleSync()
             scenario.onActivity { assertEquals("candidate-99", it.currentFocus?.tag) }
+        }
+    }
+    @Test fun everyMainControlIsReachableThroughDirectionalKeys() {
+        launch().use { scenario ->
+            waitForResult()
+            val reachable = mutableSetOf("election")
+            val queue = java.util.ArrayDeque<String>().apply { add("election") }
+            val directions = listOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT)
+            while (queue.isNotEmpty() && reachable.size < 30) {
+                val origin = queue.removeFirst()
+                for (direction in directions) {
+                    focus(scenario, origin)
+                    instrumentation.sendKeyDownUpSync(direction)
+                    instrumentation.waitForIdleSync()
+                    scenario.onActivity { activity ->
+                        val target = activity.currentFocus?.tag as? String
+                        if (target != null && reachable.add(target)) queue.add(target)
+                    }
+                }
+            }
+            val expected = setOf("election", "office", "place", "zone", "save", "favorites", "about",
+                "refresh", "search", "candidate-98", "candidate-99")
+            assertTrue("Controls unreachable by D-pad: ${expected - reachable}", reachable.containsAll(expected))
         }
     }
 }

@@ -7,7 +7,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: write
       actions: read
@@ -21,6 +21,27 @@ jobs:
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
           log-accepted-android-sdk-licenses: false
+      - name: Habilitar aceleração do emulador
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Instalar e abrir a versão assinada em Android TV
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 28
+          target: android-tv
+          arch: x86
+          profile: tv_720p
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 2048
+          script: python3 tools/smoke_release.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Resultados-TV-release-QA
+          path: dist/release-qa/
+          retention-days: 30
       - name: Verificar origem, assinatura e metadados; publicar APK
         env:
           GH_TOKEN: ${{ github.token }}

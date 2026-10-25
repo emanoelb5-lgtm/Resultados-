@@ -35,6 +35,8 @@ import zipfile
 with zipfile.ZipFile('original-build/app-release-unsigned.apk') as original, zipfile.ZipFile(apk) as signed:
     names = [n for n in original.namelist() if not n.startswith('META-INF/') and not n.endswith('/')]
     assert names
+    signed_names = [n for n in signed.namelist() if not n.startswith('META-INF/') and not n.endswith('/')]
+    assert set(names) == set(signed_names), 'Unexpected entries in the signed APK'
     for name in names:
         assert original.read(name) == signed.read(name), f'Changed application entry: {name}'
 tag = 'v' + m['version']
